@@ -11,6 +11,7 @@ jobs:
   release:
     name: Determine and publish next version
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout
         uses: actions/checkout@v4

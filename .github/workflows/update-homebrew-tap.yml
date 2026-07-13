@@ -1,0 +1,99 @@
+name: Update Homebrew Tap
+# Fires automatically after a successful Release workflow run.
+# Uses workflow_run so it runs in the default branch (main) context,
+# satisfying the production environment's branch protection gate.
+# Contributors on PR branches cannot access the APP_PRIVATE_KEY secret.
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get release tag
+        id: release
+        run: |
+          TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "release tag: $TAG"
+
+      - name: Compute SHA256s from release assets
+        id: hashes
+        run: |
+          ASSET_NAMES="wakeup-macos-arm64 wakeup-macos-x86_64 wakeup-linux-x86_64 wakeup-linux-arm64"
+          for name in $ASSET_NAMES; do
+            url=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/${{ steps.release.outputs.tag }}" \
+              --jq ".assets[] | select(.name == \"${name}\") | .browser_download_url")
+            sha=$(curl -fsSL "$url" | sha256sum | awk '{print $1}')
+            key=$(echo "$name" | sed 's/wakeup-//')
+            echo "${key}=${sha}"
+            echo "${key}=${sha}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Render formula
+        run: |
+          VER="${{ steps.release.outputs.tag }}"
+          node scripts/render-homebrew-formula.mjs \
+            --version "${VER#v}" \
+            --sha256-macos-arm64 "${{ steps.hashes.outputs.macos-arm64 }}" \
+            --sha256-macos-x86_64 "${{ steps.hashes.outputs.macos-x86_64 }}" \
+            --sha256-linux-x86_64 "${{ steps.hashes.outputs.linux-x86_64 }}" \
+            --sha256-linux-arm64 "${{ steps.hashes.outputs.linux-arm64 }}" \
+            > wakeup.rb
+
+      - name: Generate installation token
+        id: app-token
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          echo "$APP_PRIVATE_KEY" > /tmp/app-key.pem
+          chmod 600 /tmp/app-key.pem
+
+          header=$(echo -n '{"alg":"RS256","typ":"JWT"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+          now=$(date +%s)
+          payload=$(echo -n "{\"iat\":$((now-60)),\"exp\":$((now+600)),\"iss\":\"$APP_ID\"}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
+          signing_input="${header}.${payload}"
+          signature=$(echo -n "$signing_input" | openssl dgst -sha256 -sign /tmp/app-key.pem -binary | base64 -w0 | tr '+/' '-_' | tr -d '=')
+          jwt="${signing_input}.${signature}"
+          rm -f /tmp/app-key.pem
+
+          installation_id=$(gh api "/repos/$GITHUB_REPOSITORY/installation" \
+            -H "Authorization: Bearer ${jwt}" --jq '.id')
+
+          token=$(gh api --method POST "/app/installations/${installation_id}/access_tokens" \
+            -H "Authorization: Bearer ${jwt}" --jq '.token')
+
+          echo "token=${token}" >> "$GITHUB_OUTPUT"
+
+      - name: Push to homebrew-tap
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAP_REPOSITORY: usrivastava92/homebrew-tap
+          VERSION: ${{ steps.release.outputs.tag }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPOSITORY}.git" homebrew-tap
+          cp wakeup.rb homebrew-tap/Formula/wakeup.rb
+
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "Formula is already up to date."
+            exit 0
+          fi
+
+          git add Formula/wakeup.rb
+          git commit -m "Update wakeup to ${VERSION}"
+          git push origin HEAD
