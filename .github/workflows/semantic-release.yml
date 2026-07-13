@@ -32,6 +32,7 @@ jobs:
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           echo "$APP_PRIVATE_KEY" > /tmp/app-key.pem
           chmod 600 /tmp/app-key.pem
