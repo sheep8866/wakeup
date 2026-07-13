@@ -22,6 +22,8 @@ jobs:
 
       - name: Get release tag
         id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -29,6 +31,8 @@ jobs:
 
       - name: Compute SHA256s from release assets
         id: hashes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           ASSET_NAMES="wakeup-macos-arm64 wakeup-macos-x86_64 wakeup-linux-x86_64 wakeup-linux-arm64"
           for name in $ASSET_NAMES; do
